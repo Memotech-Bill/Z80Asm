@@ -2,6 +2,8 @@
 #
 # Program to assemble Z80 mnenonics supporting either traditional or MA style formatting.
 #
+# License: BSD-2-Clause
+#
 import sys
 import os
 import time

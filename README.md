@@ -5,6 +5,7 @@ Mostly of interest to Memotech owners.
 
 A usage summary is given below, for more detail see the PDF documentation.
 
+```
 usage: Z80Asm [-h] [-v] [-b [BINARY]] [-f FILL] [-x [HEX]] [-y [SYMBOL]] [-n]
               [-l [LIST]] [--list-force] [--list-cond] [-a] [-o [OUTPUT]]
               [-r {MA,M80,ZASM}] [--multi-inc] [-m] [-k [KEEP]] [-e]
@@ -55,3 +56,4 @@ options:
   --debug               Show assembler debug info
   -D DEFINE, --define DEFINE
                         Define an assembler equate
+```
