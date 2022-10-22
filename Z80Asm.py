@@ -1872,7 +1872,7 @@ class Assembler:
         if ( self.style == 'MA' ):
             if ( sOpCode == 'ORG' ):
                 self.bUpdate = 'ORG' in self.lOrgUpd
-                address = self.EvalArith16 (self.sArgs, True)
+                address = self.EvalArith (self.sArgs, True)
                 if ( self.enable[-1] ):
                     self.SetLoad (address)
                     self.pc[self.pseg] = self.lc[self.lseg] + self.offset
@@ -1910,7 +1910,7 @@ class Assembler:
         elif ( self.style in ['M80', 'PASMO'] ):
             if ( sOpCode == 'ORG' ):
                 self.bUpdate = 'ORG' in self.lOrgUpd
-                address = self.EvalArith16 (self.sArgs, True)
+                address = self.EvalArith (self.sArgs, True)
                 if ( self.enable[-1] ):
                     self.SetLoad (address)
                     self.pc[self.pseg] = self.lc[self.lseg]
@@ -1938,7 +1938,7 @@ class Assembler:
         elif ( self.style == 'ZASM' ):
             if ( sOpCode == 'LOAD' ):
                 self.bUpdate = 'LOAD' in self.lOrgUpd
-                address = self.EvalArith16 (self.sArgs, True)
+                address = self.EvalArith (self.sArgs, True)
                 if ( self.enable[-1] ):
                     self.SetLoad (address)
                 self.ref.Position ('B')
@@ -2014,6 +2014,16 @@ class Assembler:
                 value *= 2
             if ( self.enable[-1] ):
                 self.nSpace = value
+            return
+        if ( sOpCode in 'ALIGN' ):
+            self.ref.OpCode (sOpCode)
+            value = self.EvalArith16 (self.sArgs, True)
+            if ( value < 0 ):
+                self.AsmErr ('Invalid alignment')
+            elif ( self.enable[-1] ):
+                pad = self.pc[self.pseg] % value
+                if ( pad > 0 ):
+                    self.nSpace = value - pad
             return
         if ( sOpCode == 'ZERO' ):
             self.ref.OpCode (sOpCode)
