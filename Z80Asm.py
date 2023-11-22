@@ -912,7 +912,11 @@ class Assembler:
         if ( label is not None ):
             # self.fList.write ('Exists as public. id(label) = 0x{:X} id(publics) = 0x%{:X}\n'
             #                   .format (id (label), id (self.publics[sLabel])))
-            bPublic = True
+            if ( not bPublic ):
+                if ( label.file == tLoc[0] ):
+                    bPublic = True
+                else:
+                    label = None
         elif ( not bPublic ):
             label = self.labels.get (sLabel)
         if ( label is None ):
@@ -1010,6 +1014,8 @@ class Assembler:
                     state = self.exHex
                 elif ( ( ch == '&' ) and ( self.style in ('MA', 'PASMO') ) ):
                     state = self.exHex
+                elif ( ( ch == '$' ) and ( self.style == 'PASMO' ) ):
+                    state = self.exHex
                 elif ( ( ch == '%' ) and ( self.style in ('MA', 'PASMO') ) ):
                     state = self.exBinary
                 elif ( ch in '0123456789' ):
@@ -1061,11 +1067,14 @@ class Assembler:
                     sValue += ch
                     iCh += 1
                 else:
-                    try:
-                        lExpr.append (('H', int (sValue, 16)))
-                    except ValueError as e:
-                        self.AsmErr (str (e))
-                        break
+                    if (( sValue == '' ) and ( self.style == 'PASMO' )):
+                        lExpr.append (('L', '$'))
+                    else:
+                        try:
+                            lExpr.append (('H', int (sValue, 16)))
+                        except ValueError as e:
+                            self.AsmErr (str (e))
+                            break
                     state = self.exOperator
                     if ( ch == chQuote ):
                         chQuote = None
@@ -1226,10 +1235,13 @@ class Assembler:
             except ValueError as e:
                 self.AsmErr (str (e))
         elif ( state == self.exHex ):
-            try:
-                lExpr.append (('H', int (sValue, 16)))
-            except ValueError as e:
-                self.AsmErr (str (e))
+            if (( sValue == '' ) and ( self.style == 'PASMO' )):
+                lExpr.append (('L', '$'))
+            else:
+                try:
+                    lExpr.append (('H', int (sValue, 16)))
+                except ValueError as e:
+                    self.AsmErr (str (e))
         elif ( state == self.exNumber ):
             try:
                 if ( sValue[-1] == 'B' ):
@@ -1285,9 +1297,9 @@ class Assembler:
                 if ( not self.bLabCase ):
                     arg = arg.lower ()
                 rValue = None
-                label = self.publics.get (arg)
+                label = self.labels.get (arg)
                 if ( label is None ):
-                    label = self.labels.get (arg)
+                    label = self.publics.get (arg)
                 if ( label is not None ):
                     if ( label.value is not None ):
                         rValue = label.value + self.base[label.seg]
@@ -1738,8 +1750,8 @@ class Assembler:
             if ( self.enable[-1] ):
                 return 'I'
             return
-        if ( sOpCode == 'INSERT' ):
-            self.ref.OpCode (sOpCode)
+        if ( sOpCode in ['INSERT', 'INCBIN'] ):
+            self.ref.OpCode ('INSERT')
             self.ref.AddArg (self.sArgs)
             self.ltype = 'P'
             if ( self.enable[-1] ):
@@ -2694,6 +2706,7 @@ class Assembler:
 #   One pass through a source file:
     def AsmPass (self, sInput):
         self.files.append ([sInput, 0])
+        self.srcdir = os.path.dirname (sInput)
         if ( '$' not in self.labels ):
             self.labels['$'] = Label ('$', 'A', 0, self.files[-1])
         nEnable = len (self.enable)
@@ -2740,23 +2753,38 @@ class Assembler:
 #
 #   Find a folder, ignoring case
     def FindDir (self, sDir):
+        # print ("FindDir", sDir)
         if ( sDir == '' ):
             return sDir
         lPath = sDir.lower ().split ('/')
-        sDir = '.'
+        # sDir = '.'
+        sDir = os.getcwd ()
+        # print ('cwd = ' + sDir)
         for sPath in lPath:
+            # print ('sPath = ' + sPath)
             bFound = False
-            for sFolder in glob.glob (os.path.join (sDir, '*')):
-                sMatch = os.path.basename (sFolder).lower ()
-                if ( sMatch == sPath ):
-                    bFound = True
-                    sDir = sFolder
+            if ( sPath == '.' ):
+                bFound = True
+            elif ( sPath == '..' ):
+                bFound = True
+                sDir = os.path.dirname (sDir)
+            else:
+                for sFolder in glob.glob (os.path.join (sDir, '*')):
+                    # print ('sFolder = ' + sFolder)
+                    sMatch = os.path.basename (sFolder).lower ()
+                    if (( os.path.isdir (sFolder)) and ( sMatch == sPath )):
+                        bFound = True
+                        sDir = sFolder
+                        # print ('Matched: sDir = ' + sDir)
+                        break
             if ( not bFound ):
                 return None
+        # print ("Found:", sDir)
         return sDir
 #
 #   Find a file, ignoring case and processing special characters
     def FindFile (self, sFile, sExt):
+        # print ("Find:", sFile)
         if ( ( sFile[0] in '\'"' ) and ( sFile[-1] == sFile[0] ) ):
             sFile = sFile[1:-1]
         if ( self.style == 'MA' ):
@@ -2786,6 +2814,8 @@ class Assembler:
         # print ("sSearch = " + sSearch)
         for sInclude in glob.glob (os.path.join (sDir, sSearch)):
             sMatch = os.path.basename (sInclude).lower ()
+            if ( sMatch[-1] == '~' ):
+                continue
             # print ("sMatch = " + sMatch)
             if ( self.style == 'MA' ):
                 nCh = sMatch.rfind (',')
@@ -2795,20 +2825,35 @@ class Assembler:
                 return sInclude
         return None
 #
+#   Find a file, searching include directories
+    def FindInclude (self, sFile, sExt):
+        if ( ( sFile[0] in '\'"' ) and ( sFile[-1] == sFile[0] ) ):
+            sFile = sFile[1:-1]
+        sInclude = self.FindFile (sFile, self.sExt)
+        if ( sInclude is None ):
+            sInclude = self.FindFile (os.path.join (self.srcdir, sFile), self.sExt)
+        if (( sInclude is None ) and (self.inc_dirs is not None)):
+            for sDir in self.inc_dirs:
+                sInclude = self.FindFile (os.path.join (sDir, sFile), self.sExt)
+                if ( sInclude is not None ):
+                    break
+        return sInclude
+#
 #   Process an include file
     def Include (self, sFile):
-        sInclude = self.FindFile (sFile, self.sExt)
+        sInclude = self.FindInclude (sFile, self.sExt)
         if ( sInclude is None ):
             self.AsmErr ('Include file not found: ' + sFile)
             print ('Include file not found: ' + sFile)
             sys.exit (1)
+        # print ('sInclude = ' + sInclude)
         self.ref.StartInclude (sInclude)
         self.AsmPass (sInclude)
         self.ref.EndInclude ()
 #
 #   Insert a binary file
     def Insert (self, sFile):
-        sInsert = self.FindFile (sFile, self.sExt)
+        sInsert = self.FindInclude (sFile, self.sExt)
         if ( sInsert is None ):
             self.AsmErr ('Insert file not found: ' + sFile)
             print ('Insert file not found: ' + sFile)
@@ -2894,13 +2939,14 @@ class Assembler:
         self.bUpdate = False
         if ( args.update is not None ):
             for sUpd in args.update:
-                print ('Update option: ' + sUpd)
+                # print ('Update option: ' + sUpd)
                 self.lOrgUpd.append (sUpd)
                 if ( sUpd == 'ALL' ):
                     self.lOrgUpd = ['ORG', 'BORG', 'OFFSET', 'PHASE', 'DEPHASE', 'LOAD']
                     self.bUpdate = True
         self.bLabCase = ( self.style in ['M80'] )
         self.bDebug = args.debug
+        self.inc_dirs = args.include
         self.bEcho = args.echo
         self.bAddress = args.address
         if ( args.cseg is not None ):
@@ -3107,7 +3153,7 @@ def Run ():
     if ( len (sys.argv) == 1 ):
         sys.argv.append ('-h')
     parser = argparse.ArgumentParser (description = 'Assemble Z80 code written in different styles')
-    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v220807')
+    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v230305')
     parser.add_argument ('-b', '--binary', help = 'Machine code in binary format',
                          nargs = '?', default = None, const = '?')
     parser.add_argument ('-f', '--fill', help = 'Fill byte for undefined addresses',
@@ -3154,6 +3200,7 @@ def Run ():
     parser.add_argument ('-D', '--define', help = 'Define an assembler equate',
                          action = 'append')
     parser.add_argument ('source', nargs = '*', help = 'The Z80 source file(s)')
+    parser.add_argument ('-I', '--include', help = 'Folder to search for include files', action='append')
     args = parser.parse_args ()
     args.binary = DefaultName (args.binary, args.source[0], '.bin')
     args.hex = DefaultName (args.hex, args.source[0], '.hex')
