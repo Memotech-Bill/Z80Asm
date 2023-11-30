@@ -1809,6 +1809,10 @@ class Assembler:
             self.ref.OpCode (sOpCode)
             self.Code (time.strftime ('%d %b %Y'))
             return
+        if ( sOpCode == 'TIME' ):
+            self.ref.OpCode (sOpCode)
+            self.Code (time.strftime ('%H:%M'))
+            return
         if ( sOpCode == 'BUILD' ):
             self.ref.OpCode (sOpCode)
             if ( self.build is None ):
