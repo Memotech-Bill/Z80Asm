@@ -1789,7 +1789,29 @@ class Assembler:
             if ( len (self.enable) < 2 ):
                 self.AsmErr ('ENDIF with no corresponding IF')
                 return
+            self.bSkipList = not self.enable[-1]
             self.enable.pop ()
+            return
+        if ( sOpCode == 'REPT' ):
+            if ( self.enable[-1] ):
+                nRept = self.EvalArith (self.sArgs, True)
+                if ( nRept > 0 ):
+                    self.macros.append (['R', self.handles[-1], self.handles[-1].tell (), nRept])
+            return
+        if ( sOpCode == 'ENDM' ):
+            if ( len (self.macros) == 0 ):
+                self.AsmErr ('ENDM without macro')
+                return
+            macro = self.macros.pop ()
+            if ( macro[0] == 'R' ):
+                macro[3] -= 1
+                if ( macro[3] > 0 ):
+                    if ( macro[1] != self.handles[-1] ):
+                        self.AsmErr ('Start and end of macro in different files')
+                        return
+                    macro[1].seek (macro[2])
+                    self.macros.append (macro)
+                    self.bSkipList = True
             return
         if ( sOpCode in ['.COMMENT', '.PRINTX', '.PRINTF'] ):
             self.ref.OpCode (sOpCode)
@@ -1804,6 +1826,10 @@ class Assembler:
             elif ( self.enable[-1] ):
                 print (self.sArgs[1:])
             self.ltype = 'P'
+            return
+        if ( sOpCode == 'ERROR' ):
+            if ( self.enable[-1] ):
+                self.AsmErr (self.EvalString (self.sArgs))
             return
         if ( sOpCode == 'DATE' ):
             self.ref.OpCode (sOpCode)
@@ -1841,6 +1867,9 @@ class Assembler:
         if ( sOpCode in ['.8080', '.Z80', '.Z180'] ):
             self.ref.OpCode (sOpCode)
             self.cpu_type = sOpCode[1:]
+            self.ltype = 'P'
+            return
+        if ( sOpCode == 'ASEG' ):
             self.ltype = 'P'
             return
         if ( sOpCode in ['ASEG', 'CSEG', 'DSEG'] ):
@@ -2664,6 +2693,9 @@ class Assembler:
     def List (self, sLine, sErr):
         if ( self.fList is None):
             return
+        if ( self.bSkipList ):
+            self.bSkipList = False
+            return
         if ( ( self.bList[self.enable[-1]] ) or ( sErr != '' ) ):
             nb = len (self.mc)
             mb = 6
@@ -2716,7 +2748,11 @@ class Assembler:
         nEnable = len (self.enable)
         bEnd = False
         with open (sInput, 'r', encoding='latin_1') as fIn:
-            for sLine in fIn:
+            self.handles.append (fIn)
+            while (True):
+                sLine = fIn.readline ()
+                if ( len (sLine) == 0 ):
+                    break
                 self.files[-1][1] += 1
                 sLine = sLine.rstrip ()
                 if ( self.bEcho ):
@@ -3132,9 +3168,11 @@ class Assembler:
         self.locals = {}
         self.publics = {}
         self.files = []
+        self.handles = []
         self.enable = []
         self.fList = None
         self.bList = {False: False, True: False}
+        self.bSkipList = False
         self.binout = None
         self.hexout = None
         self.nErr = 0
@@ -3143,6 +3181,7 @@ class Assembler:
         self.bPrintX = False
         self.begin = 0
         self.eval = 0
+        self.macros = []
         self.Assemble (args)
 #
 def DefaultName (sFile, sSource, sExt):
@@ -3157,7 +3196,7 @@ def Run ():
     if ( len (sys.argv) == 1 ):
         sys.argv.append ('-h')
     parser = argparse.ArgumentParser (description = 'Assemble Z80 code written in different styles')
-    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v230305')
+    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v231204')
     parser.add_argument ('-b', '--binary', help = 'Machine code in binary format',
                          nargs = '?', default = None, const = '?')
     parser.add_argument ('-f', '--fill', help = 'Fill byte for undefined addresses',
