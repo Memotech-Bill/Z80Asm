@@ -1244,9 +1244,9 @@ class Assembler:
                     self.AsmErr (str (e))
         elif ( state == self.exNumber ):
             try:
-                if ( sValue[-1] == 'B' ):
+                if ( sValue[-1] in 'Bb' ):
                     lExpr.append (('B', int (sValue[0:-1], 2)))
-                elif ( sValue[-1] == 'D' ):
+                elif ( sValue[-1] in 'Dd' ):
                     lExpr.append (('D', int (sValue[0:-1], 10)))
                 else:
                     lExpr.append (('D', int (sValue, 10)))
@@ -1738,6 +1738,11 @@ class Assembler:
             self.bList[False] = self.bListCond
             self.ltype = 'P'
             return
+        if ( sOpCode == 'PAGE' ):
+            if ( self.enable[-1] and (self.fList is not None)):
+                self.fList.write (chr(0x0C))
+            self.ltype = 'P'
+            return
         if ( sOpCode in ['NAME', 'NAMEX', 'TITLE'] ):
             self.ref.OpCode (sOpCode)
             self.ref.AddArg (self.sArgs)
@@ -1881,7 +1886,14 @@ class Assembler:
                 self.pc[self.pseg] = self.lc[self.lseg] + self.offset
             self.ltype = 'P'
             return
-        if ( sOpCode in ['EXT', 'EXTRN', 'ENTRY', 'PUBLIC'] ):
+        if ( sOpCode in ['EXT', 'EXTRN'] ):
+            self.ltype = 'P'
+            self.ref.OpCode (sOpCode)
+            while ( self.sArgs != '' ):
+                sArg1 = self.PopArg ()
+                self.ref.AddArg (sArg1)
+            return
+        if ( sOpCode in ['ENTRY', 'PUBLIC', 'GLOBAL'] ):
             self.ltype = 'P'
             self.ref.OpCode (sOpCode)
             while ( self.sArgs != '' ):
@@ -1999,7 +2011,7 @@ class Assembler:
                 self.ltype = 'P'
                 return
         # Defines
-        if ( sOpCode in ['DB', 'DEFB'] ):
+        if ( sOpCode in ['DB', 'DEFB', 'DEFM'] ):
             self.ref.OpCode (sOpCode)
             while ( self.sArgs > '' ):
                 self.Code (self.EvalString (self.sArgs, True))
@@ -3196,7 +3208,7 @@ def Run ():
     if ( len (sys.argv) == 1 ):
         sys.argv.append ('-h')
     parser = argparse.ArgumentParser (description = 'Assemble Z80 code written in different styles')
-    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v231204')
+    parser.add_argument ('-v', '--version', action = 'version', version = '%(prog)s v231210')
     parser.add_argument ('-b', '--binary', help = 'Machine code in binary format',
                          nargs = '?', default = None, const = '?')
     parser.add_argument ('-f', '--fill', help = 'Fill byte for undefined addresses',
@@ -3245,20 +3257,25 @@ def Run ():
     parser.add_argument ('source', nargs = '*', help = 'The Z80 source file(s)')
     parser.add_argument ('-I', '--include', help = 'Folder to search for include files', action='append')
     args = parser.parse_args ()
-    args.binary = DefaultName (args.binary, args.source[0], '.bin')
-    args.hex = DefaultName (args.hex, args.source[0], '.hex')
-    args.symbol = DefaultName (args.symbol, args.source[0], '.sym')
     if ( args.binary ):
-        args.list = DefaultName (args.list, args.binary, '.lst')
+        sDefault = args.binary
+    elif ( args.hex ):
+        sDefault = args.hex
+    elif ( args.symbol ):
+        sDefault = args.symbol
     else:
-        args.list = DefaultName (args.list, args.source[0], '.lst')
-    args.keep = DefaultName (args.keep, args.source[0], '_p1.lst')
+        sDefault = args.source[0]
+    args.binary = DefaultName (args.binary, sDefault, '.bin')
+    args.hex = DefaultName (args.hex, sDefault, '.hex')
+    args.symbol = DefaultName (args.symbol, sDefault, '.sym')
+    args.list = DefaultName (args.list, sDefault, '.lst')
+    args.keep = DefaultName (args.keep, sDefault, '_p1.lst')
     if ( args.reformat ):
         if ( not args.output ):
             args.output = '?'
     else:
         args.reformat = 'M80'
-    args.output = DefaultName (args.output, args.source[0], '.' + args.reformat.lower ())
+    args.output = DefaultName (args.output, sDefault, '.' + args.reformat.lower ())
     Assembler (args)
 #
 Run ()
